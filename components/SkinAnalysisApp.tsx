@@ -270,7 +270,7 @@ Provide realistic, quantifiable assessments. For each dimension, provide a score
       };
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: [
           { inlineData: { data: base64Data, mimeType } },
           { text: promptObj }
@@ -298,7 +298,26 @@ Provide realistic, quantifiable assessments. For each dimension, provide a score
       
     } catch (err: any) {
       console.error(err);
-      setError(err.message || '分析过程中发生网络异常。');
+      let errorMessage = err.message || '分析过程中发生网络异常。';
+      
+      // Parse JSON formatted error messages returned by some API wrapper layers
+      if (errorMessage.startsWith('{') && errorMessage.endsWith('}')) {
+        try {
+           const parsedObj = JSON.parse(errorMessage);
+           if (parsedObj.error && parsedObj.error.message) {
+               errorMessage = parsedObj.error.message;
+           }
+        } catch (e) {}
+      }
+
+      // Friendly translations for common Gemini API errors
+      if (errorMessage.includes('503') || errorMessage.includes('high demand') || errorMessage.includes('UNAVAILABLE')) {
+          errorMessage = '当前AI模型请求过载（请稍后再试）。这通常发生在高峰期，您的请求稍后便能通过。';
+      } else if (errorMessage.includes('API key not valid')) {
+          errorMessage = 'API 密钥身份验证失败，请确保密钥配置正确无误。';
+      }
+
+      setError(errorMessage);
     } finally {
       setIsAnalyzing(false);
     }

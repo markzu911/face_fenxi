@@ -5,7 +5,6 @@ import { Upload, Camera, Loader2, Sparkles, ChevronRight, RefreshCw, Download, Z
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { toPng } from 'html-to-image';
 
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 
@@ -82,6 +81,8 @@ export function SkinAnalysisApp() {
     if (!reportRef.current) return;
     setIsDownloading(true);
     try {
+      // Lazy load to prevent Next.js SSR Webpack chunk errors ("Cannot read properties of undefined (reading 'call')")
+      const { toPng } = await import('html-to-image');
       const dataUrl = await toPng(reportRef.current, {
         pixelRatio: 2,
         backgroundColor: '#fbfaf8'

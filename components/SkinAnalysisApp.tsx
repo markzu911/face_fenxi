@@ -3,8 +3,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Camera, Loader2, Sparkles, ChevronRight, RefreshCw, Download, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { GoogleGenAI, Type } from '@google/genai';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { toPng } from 'html-to-image';
+
+const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 
 interface AnalysisResult {
   skinAge: number;
@@ -113,6 +116,10 @@ export function SkinAnalysisApp() {
 
   const analyzeImage = async () => {
     if (!image) return;
+    if (!API_KEY) {
+      setError('未配置 Gemini API 密钥。');
+      return;
+    }
 
     setIsAnalyzing(true);
     setError(null);
@@ -136,28 +143,144 @@ export function SkinAnalysisApp() {
     }
 
     try {
+      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      
       // Extract base64 data without prefix
       const base64Data = image.split(',')[1];
       const mimeType = image.split(',')[0].split(':')[1].split(';')[0];
 
-      const response = await fetch('/api/analyze', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-            imageBase64: base64Data,
-            mimeType,
-            saasContext: saasParams?.context,
-            saasPrompt: saasParams?.prompt
-         })
-      });
+      let promptObj = `You are an expert dermatologist and computer vision AI. Analyze this bare-face selfie across 8 key dimensions:
+1. pores (毛孔及细腻度)
+2. blackheads (黑头分布)
+3. wrinkles (皱纹及细纹)
+4. spots/pigmentation (色斑及色素沉着)
+5. acne/breakouts (痤疮及痘痘)
+6. sensitivity/redness (敏感及红血丝)
+7. eyeArea (黑眼圈及眼袋)
+8. hydration/oil balance (水油平衡及光泽度)
 
-      if (!response.ok) {
-         const errData = await response.json();
-         throw new Error(errData.error || '服务器推演异常');
+Provide realistic, quantifiable assessments. For each dimension, provide a score out of 100, the severity, clinical details, and an actionable sales pitch proposing a targeted skincare product/ingredient, framed positively but urgently. Respond entirely in Simplified Chinese.`;
+
+      if (saasParams?.context || (saasParams?.prompt && saasParams.prompt.length > 0)) {
+          promptObj += `\n\n【附加上下文约束】`;
+          if (saasParams.context) promptObj += `\n内容主体/要求: ${saasParams.context}`;
+          if (saasParams.prompt && saasParams.prompt.length > 0) promptObj += `\n特定关键词/标签: ${saasParams.prompt.join(', ')}`;
       }
 
-      const resData = await response.json();
-      setResult(resData.result);
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          skinAge: { type: Type.INTEGER, description: "Estimated visible skin age based on analysis" },
+          overallScore: { type: Type.INTEGER, description: "Overall skin health score out of 100" },
+          skinType: { type: Type.STRING, description: "Identified skin type classification (e.g. Combination, Dry, Oily)" },
+          dimensions: {
+            type: Type.OBJECT,
+            properties: {
+              pores: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER, description: "Score out of 100" },
+                  severity: { type: Type.STRING },
+                  details: { type: Type.STRING },
+                  salesPitch: { type: Type.STRING }
+                }
+              },
+              blackheads: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER },
+                  severity: { type: Type.STRING },
+                  details: { type: Type.STRING },
+                  salesPitch: { type: Type.STRING }
+                }
+              },
+              wrinkles: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER },
+                  severity: { type: Type.STRING },
+                  details: { type: Type.STRING },
+                  salesPitch: { type: Type.STRING }
+                }
+              },
+              spots: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER },
+                  severity: { type: Type.STRING },
+                  details: { type: Type.STRING },
+                  salesPitch: { type: Type.STRING }
+                }
+              },
+              acne: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER },
+                  severity: { type: Type.STRING },
+                  details: { type: Type.STRING },
+                  salesPitch: { type: Type.STRING }
+                }
+              },
+              sensitivity: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER },
+                  severity: { type: Type.STRING },
+                  details: { type: Type.STRING },
+                  salesPitch: { type: Type.STRING }
+                }
+              },
+              eyeArea: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER },
+                  severity: { type: Type.STRING },
+                  details: { type: Type.STRING },
+                  salesPitch: { type: Type.STRING }
+                }
+              },
+              hydration: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER },
+                  severity: { type: Type.STRING },
+                  details: { type: Type.STRING },
+                  salesPitch: { type: Type.STRING }
+                }
+              }
+            }
+          },
+          recommendations: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                product: { type: Type.STRING },
+                reason: { type: Type.STRING }
+              }
+            }
+          }
+        }
+      };
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents: [
+          { inlineData: { data: base64Data, mimeType } },
+          { text: promptObj }
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: responseSchema,
+        }
+      });
+
+      if (response.text) {
+        const parsedResult = JSON.parse(response.text) as AnalysisResult;
+        setResult(parsedResult);
+      } else {
+        throw new Error('生成的分析报告为空。');
+      }
 
       // STEP 3: Consume
       if (saasParams) {

@@ -38,7 +38,8 @@ interface SkinAnalysisAppProps {
 }
 
 export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
-  const API_KEY = geminiApiKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+  const API_KEY_RAW = geminiApiKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+  const API_KEY = API_KEY_RAW.trim().replace(/^["']|["']$/g, '');
 
   const [image, setImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);

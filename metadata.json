@@ -1,0 +1,6 @@
+{
+  "name": "Aura AI Skin Optimizer",
+  "description": "Analyze uploaded selfies with computer vision to quantify skin conditions (pores, wrinkles, etc.) and generate personalized product pitches.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

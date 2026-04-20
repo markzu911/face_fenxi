@@ -6,8 +6,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
-const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-
 interface AnalysisResult {
   skinAge: number;
   overallScore: number;
@@ -35,7 +33,13 @@ interface DimensionResult {
   salesPitch: string;
 }
 
-export function SkinAnalysisApp() {
+interface SkinAnalysisAppProps {
+  geminiApiKey?: string;
+}
+
+export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
+  const API_KEY = geminiApiKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+
   const [image, setImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);

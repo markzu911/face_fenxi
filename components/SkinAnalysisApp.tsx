@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Camera, Loader2, Sparkles, ChevronRight, RefreshCw, Download, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI, Type } from '@google/genai';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 interface AnalysisResult {
@@ -34,13 +33,11 @@ interface DimensionResult {
 }
 
 interface SkinAnalysisAppProps {
+  // Configured in environment variables now. We can largely ignore passing keys via props
   geminiApiKey?: string;
 }
 
 export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
-  const API_KEY_RAW = geminiApiKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-  const API_KEY = API_KEY_RAW.trim().replace(/^["']|["']$/g, '');
-
   const [image, setImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -122,10 +119,6 @@ export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
 
   const analyzeImage = async () => {
     if (!image) return;
-    if (!API_KEY) {
-      setError('未配置 Gemini API 密钥。');
-      return;
-    }
 
     setIsAnalyzing(true);
     setError(null);
@@ -149,143 +142,35 @@ export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
     }
 
     try {
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
-      
       // Extract base64 data without prefix
       const base64Data = image.split(',')[1];
       const mimeType = image.split(',')[0].split(':')[1].split(';')[0];
 
-      let promptObj = `You are an expert dermatologist and computer vision AI. Analyze this bare-face selfie across 8 key dimensions:
-1. pores (毛孔及细腻度)
-2. blackheads (黑头分布)
-3. wrinkles (皱纹及细纹)
-4. spots/pigmentation (色斑及色素沉着)
-5. acne/breakouts (痤疮及痘痘)
-6. sensitivity/redness (敏感及红血丝)
-7. eyeArea (黑眼圈及眼袋)
-8. hydration/oil balance (水油平衡及光泽度)
-
-Provide realistic, quantifiable assessments. For each dimension, provide a score out of 100, the severity, clinical details, and an actionable sales pitch proposing a targeted skincare product/ingredient, framed positively but urgently. Respond entirely in Simplified Chinese.`;
-
-      if (saasParams?.context || (saasParams?.prompt && saasParams.prompt.length > 0)) {
-          promptObj += `\n\n【附加上下文约束】`;
-          if (saasParams.context) promptObj += `\n内容主体/要求: ${saasParams.context}`;
-          if (saasParams.prompt && saasParams.prompt.length > 0) promptObj += `\n特定关键词/标签: ${saasParams.prompt.join(', ')}`;
-      }
-
-      const responseSchema = {
-        type: Type.OBJECT,
-        properties: {
-          skinAge: { type: Type.INTEGER, description: "Estimated visible skin age based on analysis" },
-          overallScore: { type: Type.INTEGER, description: "Overall skin health score out of 100" },
-          skinType: { type: Type.STRING, description: "Identified skin type classification (e.g. Combination, Dry, Oily)" },
-          dimensions: {
-            type: Type.OBJECT,
-            properties: {
-              pores: {
-                type: Type.OBJECT,
-                properties: {
-                  score: { type: Type.INTEGER, description: "Score out of 100" },
-                  severity: { type: Type.STRING },
-                  details: { type: Type.STRING },
-                  salesPitch: { type: Type.STRING }
-                }
-              },
-              blackheads: {
-                type: Type.OBJECT,
-                properties: {
-                  score: { type: Type.INTEGER },
-                  severity: { type: Type.STRING },
-                  details: { type: Type.STRING },
-                  salesPitch: { type: Type.STRING }
-                }
-              },
-              wrinkles: {
-                type: Type.OBJECT,
-                properties: {
-                  score: { type: Type.INTEGER },
-                  severity: { type: Type.STRING },
-                  details: { type: Type.STRING },
-                  salesPitch: { type: Type.STRING }
-                }
-              },
-              spots: {
-                type: Type.OBJECT,
-                properties: {
-                  score: { type: Type.INTEGER },
-                  severity: { type: Type.STRING },
-                  details: { type: Type.STRING },
-                  salesPitch: { type: Type.STRING }
-                }
-              },
-              acne: {
-                type: Type.OBJECT,
-                properties: {
-                  score: { type: Type.INTEGER },
-                  severity: { type: Type.STRING },
-                  details: { type: Type.STRING },
-                  salesPitch: { type: Type.STRING }
-                }
-              },
-              sensitivity: {
-                type: Type.OBJECT,
-                properties: {
-                  score: { type: Type.INTEGER },
-                  severity: { type: Type.STRING },
-                  details: { type: Type.STRING },
-                  salesPitch: { type: Type.STRING }
-                }
-              },
-              eyeArea: {
-                type: Type.OBJECT,
-                properties: {
-                  score: { type: Type.INTEGER },
-                  severity: { type: Type.STRING },
-                  details: { type: Type.STRING },
-                  salesPitch: { type: Type.STRING }
-                }
-              },
-              hydration: {
-                type: Type.OBJECT,
-                properties: {
-                  score: { type: Type.INTEGER },
-                  severity: { type: Type.STRING },
-                  details: { type: Type.STRING },
-                  salesPitch: { type: Type.STRING }
-                }
-              }
-            }
-          },
-          recommendations: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                product: { type: Type.STRING },
-                reason: { type: Type.STRING }
-              }
-            }
-          }
-        }
-      };
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          { inlineData: { data: base64Data, mimeType } },
-          { text: promptObj }
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: responseSchema,
-        }
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gemini-3-flash-preview',
+          imageBase64: base64Data,
+          mimeType,
+          saasContext: saasParams?.context,
+          saasPrompt: saasParams?.prompt
+        })
       });
 
-      if (response.text) {
-        const parsedResult = JSON.parse(response.text) as AnalysisResult;
-        setResult(parsedResult);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      
+      if (responseData.result) {
+        setResult(responseData.result as AnalysisResult);
       } else {
-        throw new Error('生成的分析报告为空。');
+        throw new Error('解析响应失败。');
       }
 
       // STEP 3: Consume

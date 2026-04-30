@@ -108,12 +108,48 @@ export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
         return;
       }
       
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImage(reader.result as string);
-        setError(null);
+      const img = new window.Image();
+      const objectUrl = URL.createObjectURL(file);
+      
+      img.onload = () => {
+        // Limit max dimensions to prevent 413 Request Entity Too Large errors
+        const MAX_SIZE = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          // Compress to JPEG with 0.8 quality to significantly reduce payload size
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+          setImage(compressedBase64);
+          setError(null);
+        }
+        URL.revokeObjectURL(objectUrl);
       };
-      reader.readAsDataURL(file);
+      
+      img.onerror = () => {
+        setError('图片读取失败，请换一张尝试。');
+        URL.revokeObjectURL(objectUrl);
+      };
+      
+      img.src = objectUrl;
     }
   };
 

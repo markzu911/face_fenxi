@@ -31,14 +31,6 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-  async rewrites() {
-    return [
-      {
-        source: '/gemini-api/:path*',
-        destination: 'https://generativelanguage.googleapis.com/:path*'
-      }
-    ];
-  },
   async headers() {
     return [
       {

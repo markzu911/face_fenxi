@@ -57,7 +57,10 @@ export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
         if (userId && userId !== 'null' && userId !== 'undefined' &&
             toolId && toolId !== 'null' && toolId !== 'undefined') {
             
-            setSaasParams({ userId, toolId, context: context || '', prompt: prompt || [] });
+            const cleanContext = (context && context !== 'null' && context !== 'undefined') ? context : '';
+            const cleanPrompt = (Array.isArray(prompt) ? prompt.filter(p => p !== 'null' && p !== 'undefined') : []);
+
+            setSaasParams({ userId, toolId, context: cleanContext, prompt: cleanPrompt });
             
             fetch('/api/tool/launch', {
                 method: 'POST',
@@ -78,6 +81,80 @@ export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
 
     return () => window.removeEventListener('message', handleMessage);
   }, []);
+
+  const uploadAndConsume = async (resultData: AnalysisResult) => {
+    if (!saasParams || !reportRef.current) {
+      if (saasParams) {
+         // If for some reason DOM is missing, just consume
+         await fetch('/api/tool/consume', {
+           method: 'POST', headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ userId: saasParams.userId, toolId: saasParams.toolId })
+         }).catch(console.error);
+      }
+      return;
+    }
+
+    try {
+      // 1. Generate Report Image
+      const { toPng } = await import('html-to-image');
+      const dataUrl = await toPng(reportRef.current, {
+        pixelRatio: 2,
+        backgroundColor: '#fbfaf8'
+      });
+      
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+
+      // 2. Direct Token
+      const tokenRes = await fetch('/api/upload/direct-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: saasParams.userId,
+          source: 'result',
+          fileName: `aura_${Date.now()}.png`,
+          mimeType: 'image/png',
+          fileSize: blob.size
+        })
+      });
+      
+      if (!tokenRes.ok) { throw new Error('获取直传 token 失败'); }
+      const token = await tokenRes.json();
+
+      if (token.success && token.uploadUrl) {
+        // 3. Upload to OSS
+        await fetch(token.uploadUrl, {
+          method: token.method,
+          headers: token.headers,
+          body: blob
+        });
+
+        // 4. Consume Integral
+        await fetch('/api/tool/consume', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: saasParams.userId, toolId: saasParams.toolId })
+        });
+
+        // 5. Commit Image
+        await fetch('/api/upload/commit', {
+           method: 'POST', headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+             userId: saasParams.userId,
+             source: 'result',
+             objectKey: token.objectKey,
+             fileSize: blob.size
+           })
+        });
+      }
+    } catch (e) {
+      console.error("生成并保存报告图片失败:", e);
+      // Fallback: Still consume integral if it succeeds even if upload fails
+      fetch('/api/tool/consume', {
+           method: 'POST', headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ userId: saasParams.userId, toolId: saasParams.toolId })
+      }).catch(console.error);
+    }
+  };
 
   const downloadReport = async () => {
     if (!reportRef.current) return;
@@ -204,17 +281,17 @@ export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
       const responseData = await response.json();
       
       if (responseData.result) {
-        setResult(responseData.result as AnalysisResult);
+        const newResult = responseData.result as AnalysisResult;
+        setResult(newResult);
+        
+        // Let React render and animate the report into the DOM before capturing
+        if (saasParams) {
+          setTimeout(() => {
+            uploadAndConsume(newResult);
+          }, 1000);
+        }
       } else {
         throw new Error('解析响应失败。');
-      }
-
-      // STEP 3: Consume
-      if (saasParams) {
-          fetch('/api/tool/consume', {
-             method: 'POST', headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ userId: saasParams.userId, toolId: saasParams.toolId })
-          }).catch(console.error);
       }
       
     } catch (err: any) {

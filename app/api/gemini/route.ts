@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI, Type } from '@google/genai';
 
+export const maxDuration = 120; // Explicitly set lambda max execution time
+
 export async function POST(req: Request) {
   try {
     const { imageBase64, mimeType, saasContext, saasPrompt, model } = await req.json();

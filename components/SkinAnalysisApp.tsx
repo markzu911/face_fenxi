@@ -85,7 +85,7 @@ export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
   const uploadAndConsume = async (resultData: AnalysisResult) => {
     if (!saasParams || !reportRef.current) {
       if (saasParams) {
-         // If for some reason DOM is missing, just consume
+         // Fallback via proxy
          await fetch('/api/tool/consume', {
            method: 'POST', headers: { 'Content-Type': 'application/json' },
            body: JSON.stringify({ userId: saasParams.userId, toolId: saasParams.toolId })
@@ -102,57 +102,26 @@ export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
         backgroundColor: '#fbfaf8'
       });
       
-      const res = await fetch(dataUrl);
-      const blob = await res.blob();
-
-      // 2. Direct Token
-      const tokenRes = await fetch('/api/upload/direct-token', {
+      // 2. Call our backend to perform Consume and Image Preservation sequence.
+      // API_SPEC specifies: 
+      // "不要让浏览器负责最终保存，保存必须在工具后端完成。"
+      const response = await fetch('/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: saasParams.userId,
-          source: 'result',
-          fileName: `aura_${Date.now()}.png`,
+          toolId: saasParams.toolId,
+          imageBase64: dataUrl,
           mimeType: 'image/png',
-          fileSize: blob.size
+          fileName: `aura_${Date.now()}.png`
         })
       });
-      
-      if (!tokenRes.ok) { throw new Error('获取直传 token 失败'); }
-      const token = await tokenRes.json();
 
-      if (token.success && token.uploadUrl) {
-        // 3. Upload to OSS
-        await fetch(token.uploadUrl, {
-          method: token.method,
-          headers: token.headers,
-          body: blob
-        });
-
-        // 4. Consume Integral
-        await fetch('/api/tool/consume', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: saasParams.userId, toolId: saasParams.toolId })
-        });
-
-        // 5. Commit Image
-        await fetch('/api/upload/commit', {
-           method: 'POST', headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({
-             userId: saasParams.userId,
-             source: 'result',
-             objectKey: token.objectKey,
-             fileSize: blob.size
-           })
-        });
+      if (!response.ok) {
+         console.warn("Backend save endpoint returned error status:", response.status);
       }
     } catch (e) {
       console.error("生成并保存报告图片失败:", e);
-      // Fallback: Still consume integral if it succeeds even if upload fails
-      fetch('/api/tool/consume', {
-           method: 'POST', headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ userId: saasParams.userId, toolId: saasParams.toolId })
-      }).catch(console.error);
     }
   };
 

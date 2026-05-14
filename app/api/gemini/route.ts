@@ -128,6 +128,7 @@ Provide realistic, quantifiable assessments. For each dimension, provide a score
       }
     };
 
+    // NextJS maxDuration covers lambda timing. 
     const response = await ai.models.generateContent({
       model: model || "gemini-2.5-flash",
       contents: [

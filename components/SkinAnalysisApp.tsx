@@ -117,11 +117,15 @@ export function SkinAnalysisApp({ geminiApiKey }: SkinAnalysisAppProps) {
         })
       });
 
-      if (!response.ok) {
-         console.warn("Backend save endpoint returned error status:", response.status);
+      const saveResData = await response.json().catch(() => ({}));
+
+      if (!response.ok || !saveResData.success) {
+         console.warn("Backend save endpoint returned error:", saveResData);
+         setError(saveResData.error || saveResData.message || "生成报告但记录保存失败，请截图保存。");
       }
     } catch (e) {
       console.error("生成并保存报告图片失败:", e);
+      setError("网络或存储异常导致记录保存失败。");
     }
   };
 
